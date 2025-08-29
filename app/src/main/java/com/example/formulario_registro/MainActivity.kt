@@ -6,19 +6,29 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.ExperimentalAnimationApi
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.with
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.DarkMode
-import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.google.gson.Gson
+import kotlinx.coroutines.launch
 import java.io.File
 import java.io.IOException
 import java.text.SimpleDateFormat
@@ -28,7 +38,6 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            // Se lee la preferencia de tema desde SharedPreferences.
             val context = LocalContext.current
             val sharedPreferences = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
             val isDarkTheme = remember { mutableStateOf(sharedPreferences.getBoolean("dark_theme", false)) }
@@ -51,241 +60,297 @@ class MainActivity : ComponentActivity() {
 enum class Screen { Registrar, Usuario, AcercaDe }
 
 /**
- * Clase de datos para el usuario, que será guardada como JSON.
- * Se añade la propiedad de fecha de registro.
+ * Función que contiene la estructura principal de la aplicación con un menú desplegable.
  */
-data class UserData(val nombre: String, val correo: String, val telefono: String, val registroFecha: String)
-
-/**
- * Función para guardar el objeto de usuario en la memoria interna.
- */
-fun guardarUsuario(context: Context, user: UserData) {
-    try {
-        val gson = Gson()
-        val json = gson.toJson(user)
-        val file = File(context.filesDir, "usuario_data.txt")
-        file.writeText(json)
-    } catch (e: IOException) {
-        e.printStackTrace()
-        Toast.makeText(context, "Error al guardar los datos", Toast.LENGTH_SHORT).show()
-    }
-}
-
-/**
- * Función para leer el objeto de usuario desde la memoria interna.
- */
-fun leerUsuario(context: Context): UserData? {
-    val file = File(context.filesDir, "usuario_data.txt")
-    if (!file.exists()) {
-        return null
-    }
-    return try {
-        val json = file.readText()
-        val gson = Gson()
-        gson.fromJson(json, UserData::class.java)
-    } catch (e: Exception) {
-        e.printStackTrace()
-        null
-    }
-}
-
-/**
- * Función para borrar el archivo de usuario.
- */
-fun borrarUsuario(context: Context) {
-    val file = File(context.filesDir, "usuario_data.txt")
-    if (file.exists()) {
-        file.delete()
-    }
-}
-
-/**
- * Este es el punto de entrada principal para el flujo de la aplicación.
- * Gestiona el estado y decide qué pantalla mostrar al usuario.
- */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalAnimationApi::class)
 @Composable
 fun RegistroAppConMenu(isDarkTheme: MutableState<Boolean>) {
-    // Estado que controla qué pantalla se muestra.
-    var currentScreen by remember { mutableStateOf(Screen.Registrar) }
-
     val context = LocalContext.current
     val sharedPreferences = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+    val scope = rememberCoroutineScope()
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    // Inicia siempre en la pantalla de Registro
+    var currentScreen by remember { mutableStateOf(Screen.Registrar) }
 
-    // Estado del menú desplegable.
-    var showMenu by remember { mutableStateOf(false) }
-
-    // Función para borrar los datos y reiniciar la aplicación.
-    val onClearData: () -> Unit = {
-        borrarUsuario(context)
-        Toast.makeText(context, "Datos borrados", Toast.LENGTH_SHORT).show()
-        currentScreen = Screen.Registrar
-        showMenu = false
+    val onUserSaved: () -> Unit = {
+        // Al guardar el usuario, redirige a la pantalla de Usuario
+        currentScreen = Screen.Usuario
     }
 
-    // Este LaunchedEffect se ejecuta una sola vez cuando el composable se carga por primera vez.
-    // Se usa para verificar si ya existe un usuario guardado.
-    LaunchedEffect(Unit) {
-        val userData = leerUsuario(context)
-        if (userData != null) {
-            // Si el nombre existe, cambia la pantalla a la de mostrar usuario.
-            currentScreen = Screen.Usuario
-        }
-    }
-
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Registro de Usuario") },
-                actions = {
-                    IconButton(onClick = {
-                        isDarkTheme.value = !isDarkTheme.value
-                        sharedPreferences.edit().putBoolean("dark_theme", isDarkTheme.value).apply()
-                    }) {
-                        // Icono animado para el modo claro/oscuro
-                        AnimatedContent(targetState = isDarkTheme.value) { targetIsDark ->
-                            if (targetIsDark) {
-                                Icon(Icons.Default.DarkMode, contentDescription = "Modo Oscuro")
-                            } else {
-                                Icon(Icons.Default.LightMode, contentDescription = "Modo Claro")
+    ModalNavigationDrawer(
+        drawerContent = {
+            ModalDrawerSheet {
+                // Encabezado del menú con información
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.AccountCircle,
+                        contentDescription = "User Icon",
+                        modifier = Modifier.size(64.dp)
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(text = "Menú Principal", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                }
+                Divider()
+                Spacer(Modifier.height(12.dp))
+                NavigationDrawerItem(
+                    icon = { Icon(Icons.Default.PersonAdd, contentDescription = "Registrar Icono") },
+                    label = { Text("Registrar Usuario") },
+                    selected = currentScreen == Screen.Registrar,
+                    onClick = {
+                        scope.launch { drawerState.close() }
+                        currentScreen = Screen.Registrar
+                    },
+                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                )
+                NavigationDrawerItem(
+                    icon = { Icon(Icons.Default.Info, contentDescription = "Acerca de Icono") },
+                    label = { Text("Acerca de...") },
+                    selected = currentScreen == Screen.AcercaDe,
+                    onClick = {
+                        scope.launch { drawerState.close() }
+                        currentScreen = Screen.AcercaDe
+                    },
+                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                )
+                NavigationDrawerItem(
+                    icon = { Icon(Icons.Default.Delete, contentDescription = "Borrar Icono") },
+                    label = { Text("Borrar datos") },
+                    selected = false,
+                    onClick = {
+                        scope.launch { drawerState.close() }
+                        borrarDatos(context)
+                        // Al borrar, regresa a la pantalla de registro
+                        currentScreen = Screen.Registrar
+                    },
+                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                )
+            }
+        },
+        drawerState = drawerState
+    ) {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = {
+                        Text(
+                            text = when (currentScreen) {
+                                Screen.Registrar -> "Registro de Usuario"
+                                Screen.Usuario -> "Perfil del Usuario"
+                                Screen.AcercaDe -> "Acerca de la App"
+                            }
+                        )
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                            Icon(Icons.Default.Menu, contentDescription = "Menú")
+                        }
+                    },
+                    actions = {
+                        IconButton(
+                            onClick = {
+                                isDarkTheme.value = !isDarkTheme.value
+                                sharedPreferences.edit().putBoolean("dark_theme", isDarkTheme.value).apply()
+                            }
+                        ) {
+                            AnimatedContent(targetState = isDarkTheme.value) { isDark ->
+                                if (isDark) {
+                                    Icon(
+                                        imageVector = Icons.Default.LightMode,
+                                        contentDescription = "Modo claro"
+                                    )
+                                } else {
+                                    Icon(
+                                        imageVector = Icons.Default.DarkMode,
+                                        contentDescription = "Modo oscuro"
+                                    )
+                                }
                             }
                         }
                     }
-                    IconButton(onClick = { showMenu = !showMenu }) {
-                        Icon(Icons.Default.Menu, contentDescription = "Menú")
+                )
+            }
+        ) { innerPadding ->
+            Box(modifier = Modifier.padding(innerPadding)) {
+                AnimatedContent(
+                    targetState = currentScreen,
+                    transitionSpec = {
+                        slideInHorizontally(animationSpec = tween(300)) { fullWidth -> -fullWidth } + fadeIn(animationSpec = tween(300)) with
+                                slideOutHorizontally(animationSpec = tween(300)) { fullWidth -> fullWidth } + fadeOut(animationSpec = tween(300))
                     }
-                    DropdownMenu(
-                        expanded = showMenu,
-                        onDismissRequest = { showMenu = false }
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text("Borrar datos") },
-                            onClick = onClearData
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Acerca de") },
-                            onClick = {
-                                currentScreen = Screen.AcercaDe
-                                showMenu = false
-                            }
-                        )
+                ) { targetScreen ->
+                    when (targetScreen) {
+                        Screen.Registrar -> RegistroUsuarioApp(onUserSaved = onUserSaved)
+                        Screen.Usuario -> MostrarUsuarioGuardado(context)
+                        Screen.AcercaDe -> AcercaDeScreen()
                     }
-                }
-            )
-        }
-    ) { paddingValues ->
-        Box(modifier = Modifier.padding(paddingValues)) {
-            when (currentScreen) {
-                Screen.Registrar -> {
-                    RegistroUsuarioApp(onRegistroExitoso = {
-                        currentScreen = Screen.Usuario
-                    })
-                }
-                Screen.Usuario -> {
-                    MostrarUsuarioGuardado(onCerrarSesion = {
-                        borrarUsuario(context)
-                        currentScreen = Screen.Registrar
-                    })
-                }
-                Screen.AcercaDe -> {
-                    AcercaDeScreen()
                 }
             }
         }
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+/**
+ * Pantalla de registro de usuario con validación de campos.
+ */
 @Composable
-fun RegistroUsuarioApp(onRegistroExitoso: () -> Unit) {
+fun RegistroUsuarioApp(onUserSaved: () -> Unit) {
     var nombre by remember { mutableStateOf("") }
     var correo by remember { mutableStateOf("") }
     var telefono by remember { mutableStateOf("") }
-    val context = LocalContext.current
 
-    // Variables de estado para los errores de validación
     var nombreError by remember { mutableStateOf(false) }
     var correoError by remember { mutableStateOf(false) }
     var telefonoError by remember { mutableStateOf(false) }
 
-    Box(
+    val context = LocalContext.current
+    // Determina si es una tableta en función del ancho de la pantalla en dp
+    val isTablet = context.resources.configuration.screenWidthDp > 600
+
+    Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp),
-        contentAlignment = Alignment.Center
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        Text(text = "Registro de Usuario", style = MaterialTheme.typography.headlineLarge)
+        Spacer(modifier = Modifier.height(32.dp))
+
         Card(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .animateContentSize()
+                .padding(horizontal = if (isTablet) 64.dp else 0.dp),
             elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
         ) {
             Column(
-                modifier = Modifier.padding(24.dp),
+                modifier = Modifier
+                    .padding(24.dp)
+                    .fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Text("Formulario de Registro", style = MaterialTheme.typography.headlineLarge)
-                Spacer(modifier = Modifier.height(24.dp))
                 // Campo de Nombre
                 OutlinedTextField(
                     value = nombre,
                     onValueChange = {
                         nombre = it
-                        nombreError = it.isBlank()
+                        nombreError = false // Se borra el error al escribir
                     },
                     label = { Text("Nombre") },
+                    leadingIcon = { Icon(Icons.Default.Person, contentDescription = "Nombre") },
+                    modifier = Modifier.fillMaxWidth(),
                     isError = nombreError,
-                    modifier = Modifier.fillMaxWidth()
+                    supportingText = { if (nombreError) Text("El nombre es requerido") }
                 )
-                if (nombreError) {
-                    Text(text = "El nombre no puede estar vacío", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-                // Campo de Correo
-                OutlinedTextField(
-                    value = correo,
-                    onValueChange = {
-                        correo = it
-                        correoError = !android.util.Patterns.EMAIL_ADDRESS.matcher(it).matches()
-                    },
-                    label = { Text("Correo") },
-                    isError = correoError,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                if (correoError) {
-                    Text(text = "Correo inválido", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-                // Campo de Teléfono
-                OutlinedTextField(
-                    value = telefono,
-                    onValueChange = {
-                        telefono = it
-                        telefonoError = !(it.all { char -> char.isDigit() } && it.length in 8..9)
-                    },
-                    label = { Text("Teléfono") },
-                    isError = telefonoError,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                if (telefonoError) {
-                    Text(text = "Teléfono inválido. Debe tener 8 o 9 dígitos.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                }
                 Spacer(modifier = Modifier.height(16.dp))
-                Button(onClick = {
-                    // Validar todos los campos antes de guardar
-                    nombreError = nombre.isBlank()
-                    correoError = !android.util.Patterns.EMAIL_ADDRESS.matcher(correo).matches()
-                    telefonoError = !(telefono.all { it.isDigit() } && telefono.length in 8..9)
 
-                    if (!nombreError && !correoError && !telefonoError) {
-                        // Guardar en la memoria interna
-                        val dateFormat = SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale.getDefault())
-                        val registroFecha = dateFormat.format(Date())
-                        val userData = UserData(nombre, correo, telefono, registroFecha)
-                        guardarUsuario(context, userData)
-                        onRegistroExitoso()
-                    } else {
-                        Toast.makeText(context, "Por favor, corrige los errores del formulario", Toast.LENGTH_SHORT).show()
+                // Disposición de campos para tabletas
+                if (isTablet) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        OutlinedTextField(
+                            value = correo,
+                            onValueChange = {
+                                correo = it
+                                correoError = !android.util.Patterns.EMAIL_ADDRESS.matcher(it).matches()
+                                if (it.isBlank()) correoError = false
+                            },
+                            label = { Text("Correo") },
+                            leadingIcon = { Icon(Icons.Default.Email, contentDescription = "Correo") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                            modifier = Modifier.weight(1f),
+                            isError = correoError,
+                            supportingText = { if (correoError) Text("Correo inválido") }
+                        )
+                        Spacer(modifier = Modifier.width(16.dp))
+                        OutlinedTextField(
+                            value = telefono,
+                            onValueChange = {
+                                telefono = it
+                                // Validación de teléfono en tiempo real
+                                telefonoError = it.isNotBlank() && !it.matches(Regex("[0-9]+"))
+                            },
+                            label = { Text("Teléfono") },
+                            leadingIcon = { Icon(Icons.Default.Phone, contentDescription = "Teléfono") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                            modifier = Modifier.weight(1f),
+                            isError = telefonoError,
+                            supportingText = {
+                                if (telefonoError) Text("El teléfono solo debe contener números")
+                                else if (telefono.isBlank()) Text("El teléfono es requerido")
+                            }
+                        )
                     }
-                }) {
+                } else {
+                    // Disposición de campos para teléfonos
+                    Column(
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        OutlinedTextField(
+                            value = correo,
+                            onValueChange = {
+                                correo = it
+                                correoError = !android.util.Patterns.EMAIL_ADDRESS.matcher(it).matches()
+                                if (it.isBlank()) correoError = false
+                            },
+                            label = { Text("Correo") },
+                            leadingIcon = { Icon(Icons.Default.Email, contentDescription = "Correo") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                            modifier = Modifier.fillMaxWidth(),
+                            isError = correoError,
+                            supportingText = { if (correoError) Text("Correo inválido") }
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        OutlinedTextField(
+                            value = telefono,
+                            onValueChange = {
+                                telefono = it
+                                // Validación de teléfono en tiempo real
+                                telefonoError = it.isNotBlank() && !it.matches(Regex("[0-9]+"))
+                            },
+                            label = { Text("Teléfono") },
+                            leadingIcon = { Icon(Icons.Default.Phone, contentDescription = "Teléfono") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                            modifier = Modifier.fillMaxWidth(),
+                            isError = telefonoError,
+                            supportingText = {
+                                if (telefonoError) Text("El teléfono solo debe contener números")
+                                else if (telefono.isBlank()) Text("El teléfono es requerido")
+                            }
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(32.dp))
+
+                ElevatedButton(
+                    onClick = {
+                        nombreError = nombre.isBlank()
+                        telefonoError = telefono.isBlank() || !telefono.matches(Regex("[0-9]+"))
+                        correoError = correo.isBlank() || !android.util.Patterns.EMAIL_ADDRESS.matcher(correo).matches()
+
+                        if (!nombreError && !telefonoError && !correoError) {
+                            val usuarioData = UserData(
+                                nombre = nombre,
+                                correo = correo,
+                                telefono = telefono,
+                                fechaRegistro = SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale.getDefault()).format(Date())
+                            )
+                            guardarUsuario(context, usuarioData)
+                            onUserSaved()
+                            Toast.makeText(context, "Datos guardados correctamente", Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(context, "Por favor, completa los campos correctamente", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
                     Text("Registrar")
                 }
             }
@@ -293,44 +358,48 @@ fun RegistroUsuarioApp(onRegistroExitoso: () -> Unit) {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+/**
+ * Pantalla que muestra los datos del usuario guardado.
+ */
 @Composable
-fun MostrarUsuarioGuardado(onCerrarSesion: () -> Unit) {
-    // Obtener datos del usuario desde la memoria interna
-    val context = LocalContext.current
-    val userData = leerUsuario(context)
-    val nombre = userData?.nombre ?: ""
-    val correo = userData?.correo ?: ""
-    val telefono = userData?.telefono ?: ""
-    val registroFecha = userData?.registroFecha ?: "No disponible"
+fun MostrarUsuarioGuardado(context: Context) {
+    val usuario by remember { mutableStateOf(leerUsuario(context)) }
 
-    // Envuelve el contenido en un Card con un diseño similar al formulario
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Card(
-            modifier = Modifier.padding(16.dp),
-            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+    if (usuario != null) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Column(
-                modifier = Modifier.padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+            Card(
+                modifier = Modifier.fillMaxWidth().weight(1f).padding(16.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
             ) {
-                Text(text = "¡Usuario registrado con éxito!", style = MaterialTheme.typography.headlineMedium)
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(text = "Nombre: $nombre", style = MaterialTheme.typography.bodyLarge)
-                Text(text = "Correo: $correo", style = MaterialTheme.typography.bodyLarge)
-                Text(text = "Teléfono: $telefono", style = MaterialTheme.typography.bodyLarge)
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(text = "Fecha de registro: $registroFecha", style = MaterialTheme.typography.bodyLarge)
-                Spacer(modifier = Modifier.height(16.dp))
-                Button(onClick = onCerrarSesion) {
-                    Text("Cerrar Sesión")
+                Column(
+                    modifier = Modifier.padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "Datos del Usuario",
+                        style = MaterialTheme.typography.headlineMedium
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(text = "Nombre: ${usuario!!.nombre}", fontSize = 18.sp)
+                    Text(text = "Correo: ${usuario!!.correo}", fontSize = 18.sp)
+                    Text(text = "Teléfono: ${usuario!!.telefono}", fontSize = 18.sp)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(text = "Fecha de Registro: ${usuario!!.fechaRegistro}", fontSize = 18.sp)
                 }
             }
+        }
+    } else {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            Text("No hay datos de usuario guardados", style = MaterialTheme.typography.bodyLarge)
         }
     }
 }
@@ -378,5 +447,59 @@ fun AcercaDeScreen() {
                 )
             }
         }
+    }
+}
+
+/**
+ * Objeto de datos del usuario, para guardar en JSON.
+ */
+data class UserData(
+    val nombre: String,
+    val correo: String,
+    val telefono: String,
+    val fechaRegistro: String
+)
+
+/**
+ * Guarda los datos del usuario en un archivo interno en formato JSON.
+ */
+fun guardarUsuario(context: Context, usuario: UserData) {
+    try {
+        val gson = Gson()
+        val jsonString = gson.toJson(usuario)
+        val file = File(context.filesDir, "usuario_data.txt")
+        file.writeText(jsonString)
+    } catch (e: IOException) {
+        e.printStackTrace()
+        Toast.makeText(context, "Error al guardar los datos", Toast.LENGTH_SHORT).show()
+    }
+}
+
+/**
+ * Lee los datos del usuario desde un archivo interno.
+ */
+fun leerUsuario(context: Context): UserData? {
+    try {
+        val file = File(context.filesDir, "usuario_data.txt")
+        if (!file.exists()) {
+            return null
+        }
+        val jsonString = file.readText()
+        val gson = Gson()
+        return gson.fromJson(jsonString, UserData::class.java)
+    } catch (e: IOException) {
+        e.printStackTrace()
+        return null
+    }
+}
+
+/**
+ * Borra los datos del usuario desde el archivo interno.
+ */
+fun borrarDatos(context: Context) {
+    val file = File(context.filesDir, "usuario_data.txt")
+    if (file.exists()) {
+        file.delete()
+        Toast.makeText(context, "Datos borrados", Toast.LENGTH_SHORT).show()
     }
 }

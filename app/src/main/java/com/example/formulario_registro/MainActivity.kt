@@ -28,11 +28,17 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.google.gson.Gson
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.File
 import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.*
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.Color
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -57,7 +63,7 @@ class MainActivity : ComponentActivity() {
 }
 
 /** Pantallas disponibles en el menú */
-enum class Screen { Registrar, Usuario, AcercaDe }
+enum class Screen { Splash, Registrar, Usuario, AcercaDe }
 
 /**
  * Función que contiene la estructura principal de la aplicación con un menú desplegable.
@@ -69,11 +75,19 @@ fun RegistroAppConMenu(isDarkTheme: MutableState<Boolean>) {
     val sharedPreferences = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
     val scope = rememberCoroutineScope()
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
-    // Inicia siempre en la pantalla de Registro
-    var currentScreen by remember { mutableStateOf(Screen.Registrar) }
+    // El estado inicial ahora es la pantalla de carga
+    var currentScreen by remember { mutableStateOf(Screen.Splash) }
+    var usuarioGuardado by remember { mutableStateOf<UserData?>(null) }
+
+    LaunchedEffect(key1 = Unit) {
+        // Simula una carga inicial
+        delay(3000) // Espera 3 segundos
+        usuarioGuardado = leerUsuario(context)
+        currentScreen = if (usuarioGuardado != null) Screen.Usuario else Screen.Registrar
+    }
 
     val onUserSaved: () -> Unit = {
-        // Al guardar el usuario, redirige a la pantalla de Usuario
+        usuarioGuardado = leerUsuario(context)
         currentScreen = Screen.Usuario
     }
 
@@ -142,32 +156,38 @@ fun RegistroAppConMenu(isDarkTheme: MutableState<Boolean>) {
                                 Screen.Registrar -> "Registro de Usuario"
                                 Screen.Usuario -> "Perfil del Usuario"
                                 Screen.AcercaDe -> "Acerca de la App"
+                                Screen.Splash -> ""
                             }
                         )
                     },
                     navigationIcon = {
-                        IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                            Icon(Icons.Default.Menu, contentDescription = "Menú")
+                        if (currentScreen != Screen.Splash) {
+                            IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                                Icon(Icons.Default.Menu, contentDescription = "Menú")
+                            }
                         }
                     },
                     actions = {
-                        IconButton(
-                            onClick = {
-                                isDarkTheme.value = !isDarkTheme.value
-                                sharedPreferences.edit().putBoolean("dark_theme", isDarkTheme.value).apply()
-                            }
-                        ) {
-                            AnimatedContent(targetState = isDarkTheme.value) { isDark ->
-                                if (isDark) {
-                                    Icon(
-                                        imageVector = Icons.Default.LightMode,
-                                        contentDescription = "Modo claro"
-                                    )
-                                } else {
-                                    Icon(
-                                        imageVector = Icons.Default.DarkMode,
-                                        contentDescription = "Modo oscuro"
-                                    )
+                        if (currentScreen != Screen.Splash) {
+                            IconButton(
+                                onClick = {
+                                    isDarkTheme.value = !isDarkTheme.value
+                                    sharedPreferences.edit().putBoolean("dark_theme", isDarkTheme.value).apply()
+                                }
+                            ) {
+                                // Se usa Crossfade para una transición más suave del ícono
+                                Crossfade(targetState = isDarkTheme.value, animationSpec = tween(500)) { isDark ->
+                                    if (isDark) {
+                                        Icon(
+                                            imageVector = Icons.Default.LightMode,
+                                            contentDescription = "Modo claro"
+                                        )
+                                    } else {
+                                        Icon(
+                                            imageVector = Icons.Default.DarkMode,
+                                            contentDescription = "Modo oscuro"
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -184,6 +204,7 @@ fun RegistroAppConMenu(isDarkTheme: MutableState<Boolean>) {
                     }
                 ) { targetScreen ->
                     when (targetScreen) {
+                        Screen.Splash -> SplashScreen()
                         Screen.Registrar -> RegistroUsuarioApp(onUserSaved = onUserSaved)
                         Screen.Usuario -> MostrarUsuarioGuardado(context)
                         Screen.AcercaDe -> AcercaDeScreen()
@@ -191,6 +212,43 @@ fun RegistroAppConMenu(isDarkTheme: MutableState<Boolean>) {
                 }
             }
         }
+    }
+}
+
+/**
+ * Pantalla de carga (Splash Screen).
+ */
+@Composable
+fun SplashScreen() {
+    val alpha by animateFloatAsState(
+        targetValue = if (true) 1f else 0f,
+        animationSpec = tween(durationMillis = 1000, easing = LinearEasing),
+        label = "alpha"
+    )
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .alpha(alpha),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Icon(
+            imageVector = Icons.Default.AccountCircle,
+            contentDescription = "Logo de la app",
+            modifier = Modifier.size(128.dp),
+            tint = MaterialTheme.colorScheme.primary
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        Text(
+            text = "Cargando...",
+            style = MaterialTheme.typography.titleLarge
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        LinearProgressIndicator(
+            modifier = Modifier.width(200.dp),
+            color = MaterialTheme.colorScheme.primary
+        )
     }
 }
 

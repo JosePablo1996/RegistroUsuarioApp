@@ -5,15 +5,8 @@ import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.ExperimentalAnimationApi
-import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.animation.with
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -22,6 +15,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -34,11 +30,6 @@ import java.io.File
 import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.*
-import androidx.compose.animation.Crossfade
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.graphics.Color
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -75,15 +66,14 @@ fun RegistroAppConMenu(isDarkTheme: MutableState<Boolean>) {
     val sharedPreferences = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
     val scope = rememberCoroutineScope()
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
-    // El estado inicial ahora es la pantalla de carga
     var currentScreen by remember { mutableStateOf(Screen.Splash) }
     var usuarioGuardado by remember { mutableStateOf<UserData?>(null) }
 
+    // Lógica para la pantalla de carga
     LaunchedEffect(key1 = Unit) {
-        // Simula una carga inicial
-        delay(3000) // Espera 3 segundos
-        usuarioGuardado = leerUsuario(context)
-        currentScreen = if (usuarioGuardado != null) Screen.Usuario else Screen.Registrar
+        delay(2000) // Espera 2 segundos para la animación
+        usuarioGuardado = leerUsuario(context) // Carga los datos del usuario si existen
+        currentScreen = Screen.Registrar // Siempre navega a la pantalla de registro
     }
 
     val onUserSaved: () -> Unit = {
@@ -94,7 +84,7 @@ fun RegistroAppConMenu(isDarkTheme: MutableState<Boolean>) {
     ModalNavigationDrawer(
         drawerContent = {
             ModalDrawerSheet {
-                // Encabezado del menú con información
+                // Encabezado del menú
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -149,26 +139,25 @@ fun RegistroAppConMenu(isDarkTheme: MutableState<Boolean>) {
     ) {
         Scaffold(
             topBar = {
-                TopAppBar(
-                    title = {
-                        Text(
-                            text = when (currentScreen) {
-                                Screen.Registrar -> "Registro de Usuario"
-                                Screen.Usuario -> "Perfil del Usuario"
-                                Screen.AcercaDe -> "Acerca de la App"
-                                Screen.Splash -> ""
-                            }
-                        )
-                    },
-                    navigationIcon = {
-                        if (currentScreen != Screen.Splash) {
+                // La barra superior solo se muestra después de la pantalla de carga
+                if (currentScreen != Screen.Splash) {
+                    TopAppBar(
+                        title = {
+                            Text(
+                                text = when (currentScreen) {
+                                    Screen.Registrar -> "Registro de Usuario"
+                                    Screen.Usuario -> "Perfil del Usuario"
+                                    Screen.AcercaDe -> "Acerca de la App"
+                                    Screen.Splash -> ""
+                                }
+                            )
+                        },
+                        navigationIcon = {
                             IconButton(onClick = { scope.launch { drawerState.open() } }) {
                                 Icon(Icons.Default.Menu, contentDescription = "Menú")
                             }
-                        }
-                    },
-                    actions = {
-                        if (currentScreen != Screen.Splash) {
+                        },
+                        actions = {
                             IconButton(
                                 onClick = {
                                     isDarkTheme.value = !isDarkTheme.value
@@ -191,8 +180,8 @@ fun RegistroAppConMenu(isDarkTheme: MutableState<Boolean>) {
                                 }
                             }
                         }
-                    }
-                )
+                    )
+                }
             }
         ) { innerPadding ->
             Box(modifier = Modifier.padding(innerPadding)) {
@@ -216,39 +205,58 @@ fun RegistroAppConMenu(isDarkTheme: MutableState<Boolean>) {
 }
 
 /**
- * Pantalla de carga (Splash Screen).
+ * Pantalla de carga (Splash Screen) con una apariencia mejorada.
  */
 @Composable
 fun SplashScreen() {
-    val alpha by animateFloatAsState(
-        targetValue = if (true) 1f else 0f,
-        animationSpec = tween(durationMillis = 1000, easing = LinearEasing),
-        label = "alpha"
-    )
+    val showContent = remember { mutableStateOf(false) }
+
+    // Dispara la animación de entrada después de un breve retraso
+    LaunchedEffect(Unit) {
+        delay(100)
+        showContent.value = true
+    }
 
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .alpha(alpha),
+        modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Icon(
-            imageVector = Icons.Default.AccountCircle,
-            contentDescription = "Logo de la app",
-            modifier = Modifier.size(128.dp),
-            tint = MaterialTheme.colorScheme.primary
-        )
+        // Animación de entrada para el ícono
+        AnimatedVisibility(
+            visible = showContent.value,
+            enter = fadeIn(animationSpec = tween(durationMillis = 1000, delayMillis = 200)) + slideInVertically(animationSpec = tween(durationMillis = 1000, delayMillis = 200))
+        ) {
+            Icon(
+                imageVector = Icons.Default.RocketLaunch,
+                contentDescription = "Logo de la app",
+                modifier = Modifier.size(96.dp),
+                tint = MaterialTheme.colorScheme.primary
+            )
+        }
+        Spacer(modifier = Modifier.height(32.dp))
+        // Animación de entrada para el texto
+        AnimatedVisibility(
+            visible = showContent.value,
+            enter = fadeIn(animationSpec = tween(durationMillis = 1000, delayMillis = 500))
+        ) {
+            Text(
+                text = "Cargando...",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+            )
+        }
         Spacer(modifier = Modifier.height(16.dp))
-        Text(
-            text = "Cargando...",
-            style = MaterialTheme.typography.titleLarge
-        )
-        Spacer(modifier = Modifier.height(16.dp))
-        LinearProgressIndicator(
-            modifier = Modifier.width(200.dp),
-            color = MaterialTheme.colorScheme.primary
-        )
+        // Animación de entrada para la barra de progreso
+        AnimatedVisibility(
+            visible = showContent.value,
+            enter = fadeIn(animationSpec = tween(durationMillis = 1000, delayMillis = 800))
+        ) {
+            LinearProgressIndicator(
+                modifier = Modifier.width(200.dp),
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
     }
 }
 
@@ -266,7 +274,6 @@ fun RegistroUsuarioApp(onUserSaved: () -> Unit) {
     var telefonoError by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
-    // Determina si es una tableta en función del ancho de la pantalla en dp
     val isTablet = context.resources.configuration.screenWidthDp > 600
 
     Column(
@@ -296,7 +303,7 @@ fun RegistroUsuarioApp(onUserSaved: () -> Unit) {
                     value = nombre,
                     onValueChange = {
                         nombre = it
-                        nombreError = false // Se borra el error al escribir
+                        nombreError = false
                     },
                     label = { Text("Nombre") },
                     leadingIcon = { Icon(Icons.Default.Person, contentDescription = "Nombre") },
@@ -316,8 +323,7 @@ fun RegistroUsuarioApp(onUserSaved: () -> Unit) {
                             value = correo,
                             onValueChange = {
                                 correo = it
-                                correoError = !android.util.Patterns.EMAIL_ADDRESS.matcher(it).matches()
-                                if (it.isBlank()) correoError = false
+                                correoError = if (it.isNotBlank()) !android.util.Patterns.EMAIL_ADDRESS.matcher(it).matches() else false
                             },
                             label = { Text("Correo") },
                             leadingIcon = { Icon(Icons.Default.Email, contentDescription = "Correo") },
@@ -331,7 +337,6 @@ fun RegistroUsuarioApp(onUserSaved: () -> Unit) {
                             value = telefono,
                             onValueChange = {
                                 telefono = it
-                                // Validación de teléfono en tiempo real
                                 telefonoError = it.isNotBlank() && !it.matches(Regex("[0-9]+"))
                             },
                             label = { Text("Teléfono") },
@@ -354,8 +359,7 @@ fun RegistroUsuarioApp(onUserSaved: () -> Unit) {
                             value = correo,
                             onValueChange = {
                                 correo = it
-                                correoError = !android.util.Patterns.EMAIL_ADDRESS.matcher(it).matches()
-                                if (it.isBlank()) correoError = false
+                                correoError = if (it.isNotBlank()) !android.util.Patterns.EMAIL_ADDRESS.matcher(it).matches() else false
                             },
                             label = { Text("Correo") },
                             leadingIcon = { Icon(Icons.Default.Email, contentDescription = "Correo") },
@@ -369,7 +373,6 @@ fun RegistroUsuarioApp(onUserSaved: () -> Unit) {
                             value = telefono,
                             onValueChange = {
                                 telefono = it
-                                // Validación de teléfono en tiempo real
                                 telefonoError = it.isNotBlank() && !it.matches(Regex("[0-9]+"))
                             },
                             label = { Text("Teléfono") },
@@ -432,7 +435,10 @@ fun MostrarUsuarioGuardado(context: Context) {
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Card(
-                modifier = Modifier.fillMaxWidth().weight(1f).padding(16.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f, fill = false)
+                    .padding(16.dp),
                 elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
             ) {
                 Column(
